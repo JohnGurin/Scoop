@@ -1,11 +1,19 @@
 # Usage: scoop list [query]
 # Summary: List installed apps
 # Help: Lists all installed apps, or the apps matching the supplied query.
-param($query)
+#
+# Options:
+#   -d, --desc  show description for the listed apps, column G means global install
 
 . "$PSScriptRoot\..\lib\versions.ps1" # 'Select-CurrentVersion'
 . "$PSScriptRoot\..\lib\manifest.ps1" # 'parse_json' 'Select-CurrentVersion' (indirectly)
 . "$PSScriptRoot\..\lib\download.ps1" # 'Get-UserAgent'
+. "$PSScriptRoot\..\lib\getopt.ps1"
+
+$opt_description = @('d', 'desc')
+$opt, $query, $err = getopt $args @opt_description
+if ($err) { Write-Host "scoop list: $err"; exit 1 }
+$is_description = $opt_description | ForEach-Object { if ($opt.$_) { $true } }
 
 $defaultArchitecture = Get-DefaultArchitecture
 if (-not (Get-FormatData ScoopApps)) {
@@ -32,9 +40,7 @@ if ($local -and $global) {
     $apps = $apps | Sort-Object { $_.name }
 }
 
-$list = @()
-Write-Host "Installed apps$($query_message):"
-$apps | ForEach-Object {
+$MakeItemFull = {
     $app = $_.name
     $global = $_.global
     $item = @{}
@@ -70,9 +76,23 @@ $apps | ForEach-Object {
         $info += $install_info.architecture
     }
     $item.Info = $info -join ', '
-
-    $list += [PSCustomObject]$item
+    [PSCustomObject]$item | Add-Member -TypeName 'ScoopApps' -PassThru
 }
 
-$list | Add-Member -TypeName 'ScoopApps' -PassThru
+$MakeItemDesc = {
+    $app = $_.name
+    $global = $_.global
+    $ver = Select-CurrentVersion -AppName $app -Global:$global
+    $manifest = installed_manifest $app $ver $global
+    [PSCustomObject]@{
+        Name        = $app
+        G           = if ($global) { '*' };
+        Description = $manifest.description
+    }
+}
+
+$MakeItem = if ($is_description) { $MakeItemDesc } else { $MakeItemFull }
+
+Write-Host "Installed apps$($query_message):"
+$apps | ForEach-Object { $list = @() } { $list += &$MakeItem($_) } { $list }
 exit 0
