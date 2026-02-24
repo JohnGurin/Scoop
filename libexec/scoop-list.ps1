@@ -28,6 +28,9 @@ if (-not $apps) {
     warn "There aren't any apps installed$($query_message)."
     exit 1
 }
+if ($local -and $global) {
+    $apps = $apps | Sort-Object { $_.name }
+}
 
 $list = @()
 Write-Host "Installed apps$($query_message):"
